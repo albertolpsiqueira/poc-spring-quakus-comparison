@@ -1,14 +1,14 @@
-package br.com.albertolpsiqueira.spingbootcrud.controllers;
+package br.com.albertolpsiqueira.controllers;
 
-import br.com.albertolpsiqueira.spingbootcrud.dtos.UserRequestDTO;
-import br.com.albertolpsiqueira.spingbootcrud.dtos.UserResponseDTO;
-import br.com.albertolpsiqueira.spingbootcrud.services.UserService;
 
+import br.com.albertolpsiqueira.dtos.UserRequestDTO;
+import br.com.albertolpsiqueira.dtos.UserResponseDTO;
+import br.com.albertolpsiqueira.services.UserService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.validation.*;
 import java.util.List;
 
 @RestController
@@ -34,7 +34,7 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<UserResponseDTO> findById(@PathVariable Long id) {
+    public ResponseEntity<UserResponseDTO> findById(@PathVariable("id") Long id) {
         UserResponseDTO responseDTO = userService.findById(id);
         return ResponseEntity.ok(responseDTO);
     }

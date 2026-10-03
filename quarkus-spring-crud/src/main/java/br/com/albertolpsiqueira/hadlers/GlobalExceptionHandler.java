@@ -1,12 +1,11 @@
-package br.com.albertolpsiqueira.spingbootcrud.handlers;
+package br.com.albertolpsiqueira.hadlers;
 
-import br.com.albertolpsiqueira.spingbootcrud.exceptions.EmailAlreadyExistsException;
-import br.com.albertolpsiqueira.spingbootcrud.exceptions.ErrorResponseDTO;
-import br.com.albertolpsiqueira.spingbootcrud.exceptions.ResourceNotFoundException;
+import br.com.albertolpsiqueira.exceptions.EmailAlreadyExistsException;
+import br.com.albertolpsiqueira.exceptions.ErrorResponseDTO;
+import br.com.albertolpsiqueira.exceptions.ResourceNotFoundException;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -32,13 +31,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidationExceptions(MethodArgumentNotValidException ex) {
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, String>> handleValidationExceptions(ConstraintViolationException ex) {
         Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getAllErrors().forEach(error -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
+        ex.getConstraintViolations().forEach(v -> {
+            String path = v.getPropertyPath().toString();
+            String field = path.substring(path.lastIndexOf('.')+1);
         });
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errors);
     }
