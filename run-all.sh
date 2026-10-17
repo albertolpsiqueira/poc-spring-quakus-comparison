@@ -3,7 +3,7 @@
 # Resultado em results/summary.csv
 # Uso: ROUNDS=1 ./run-all.sh
 
-APPS=("spring-crud:8081" "quarkus-spring-crud:8082" "quarkus-crud:8083")
+APPS=("spring-boot-crud:8081" "quarkus-spring-crud:8082" "quarkus-crud:8083")
 TESTS=("read" "write" "list")
 ROUNDS=${ROUNDS:-3}
 HOST=127.0.0.1
@@ -11,7 +11,7 @@ HOST=127.0.0.1
 mkdir -p results
 echo "app,round,test,startup_ms,mem_start,mem_end,req_per_s,avg_ms,p95_ms,p99_ms,fail_rate" > results/summary.csv
 
-docker rm -f spring-crud quarkus-spring-crud quarkus-crud >/dev/null 2>&1
+docker rm -f spring-boot-crud quarkus-spring-crud quarkus-crud >/dev/null 2>&1
 
 for round in $(seq 1 $ROUNDS); do
   for entry in "${APPS[@]}"; do
