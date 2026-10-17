@@ -28,6 +28,7 @@ Métricas coletadas: **tempo de startup**, **memória (início e após a carga)*
 12. [Problemas comuns](#12-problemas-comuns)
 13. [Limitações](#13-limitações)
 14. [Resultados](#14-resultados)
+15. [Resultados do Quarkus nativo](#15-resultados-do-quarkus-nativo)
 
 ---
 
@@ -513,3 +514,88 @@ Startup e memória são a mediana das 9 execuções de cada app (3 cenários × 
 - **req/s absoluto:** o valor vem do campo `rate` do k6. Em todas as execuções válidas ele ficou em 60% a 64% do máximo teórico para 50 VUs (50 dividido pela latência média), o que indica que o k6 divide a contagem de requisições por uma duração maior que os 120 s da fase de medição. O fator é semelhante nos três apps, então a **comparação relativa vale**, mas os valores absolutos de req/s estão subestimados e não devem ser comparados com outros benchmarks.
 - **Execução anômala:** na rodada 3 do `quarkus-crud` em escrita, o k6 reportou 7,09 req/s com latência média normal (33,6 ms), o que é inconsistente. A mediana absorve esse valor, mas ele deve ser tratado como inválido. Repita esse teste isolado para confirmar.
 - Os resultados valem para o runtime da seção 2 (Oracle GraalVM em modo JVM) e para o ambiente em que foram medidos.
+
+## 15. Resultados do Quarkus nativo
+
+Execução do `quarkus-crud` compilado como **executável nativo**, em 3 rodadas do `run-native.sh`, com o mesmo `perf.js` (60 s de warm-up e 50 VUs por 120 s) e os mesmos limites de container (`--cpus=2 --memory=1g`). Os valores são a **mediana** das rodadas. Os dados brutos estão em `results-native/summary.csv`. A taxa de falha foi **0** em todas as execuções.
+
+### Como reproduzir
+
+1. Anote com `@RegisterForReflection` os DTOs de saída `UserResponseDTO` e `ErrorResponseDTO` (importe `io.quarkus.runtime.annotations.RegisterForReflection`), porque eles são serializados dentro de `Response.entity(...)`.
+2. Gere o executável nativo dentro de `quarkus-crud`:
+   ```bash
+   ./mvnw clean package -Dnative -Dquarkus.native.container-build=true -DskipTests
+   ls -lh target/*-runner
+   ```
+3. Crie o `quarkus-crud/Dockerfile.native`. A imagem base precisa ser compatível com a glibc do builder; use a mesma indicada em `src/main/docker/Dockerfile.native-micro` do projeto (na versão do Quarkus usada aqui, UBI 9):
+   ```dockerfile
+   FROM quay.io/quarkus/ubi9-quarkus-micro-image:2.0
+   WORKDIR /work/
+   COPY target/*-runner /work/application
+   RUN chmod 775 /work/application
+   EXPOSE 8083
+   ENTRYPOINT ["./application", "-Xms512m", "-Xmx512m", "-Dquarkus.http.host=0.0.0.0"]
+   ```
+4. Construa a imagem, valide a equivalência (seção 7, porta 8083) e rode o benchmark:
+   ```bash
+   docker build -f quarkus-crud/Dockerfile.native -t quarkus-crud-native ./quarkus-crud
+   ROUNDS=3 ./run-native.sh
+   ```
+
+Observações sobre o build:
+
+- O `container-build` usa por padrão o **Mandrel** (distribuição da Red Hat do GraalVM), e não o Oracle GraalVM das seções anteriores.
+- O heap foi igualado ao dos testes em JVM com `-Xms512m -Xmx512m` no `ENTRYPOINT`, porque o `JAVA_TOOL_OPTIONS` não vale para executável nativo.
+- O erro `GLIBC_2.3x not found` ao subir o container indica imagem base mais antiga que o builder; troque o `FROM`.
+
+### Comparação com os testes em JVM
+
+Os valores de JVM são os da seção 14. O Quarkus nativo foi medido em outra sessão, com o mesmo procedimento.
+
+| Métrica | Spring Boot (JVM) | Spring no Quarkus (JVM) | Quarkus (JVM) | Quarkus (nativo) |
+|---|---:|---:|---:|---:|
+| Startup até a 1ª resposta 200 (ms) | 5616 | 2216 | 2132 | 414 |
+| Memória logo após subir (MiB) | 349,6 | 233,6 | 204,1 | 12,4 |
+| Memória após a carga (MiB) | 427,6 | 386,8 | 377,9 | 70,8 |
+
+**Leitura por id (`GET /users/{id}`)**
+
+| Métrica | Spring Boot (JVM) | Spring no Quarkus (JVM) | Quarkus (JVM) | Quarkus (nativo) |
+|---|---:|---:|---:|---:|
+| req/s | 12071 | 15997 | 21944 | 4427 |
+| Latência média (ms) | 2,55 | 1,91 | 1,37 | 7,11 |
+| p95 (ms) | 5,29 | 3,98 | 2,86 | 42,00 |
+| p99 (ms) | 23,17 | 12,85 | 4,41 | 49,91 |
+
+**Escrita (`POST /users`)**
+
+| Métrica | Spring Boot (JVM) | Spring no Quarkus (JVM) | Quarkus (JVM) | Quarkus (nativo) |
+|---|---:|---:|---:|---:|
+| req/s | 1460 | 757 | 697 | 1377 |
+| Latência média (ms) | 21,56 | 41,81 | 37,16 | 23,17 |
+| p95 (ms) | 82,32 | 91,85 | 88,06 | 73,81 |
+| p99 (ms) | 96,97 | 101,63 | 97,34 | 81,06 |
+
+**Listagem (`GET /users`, 100 registros)**
+
+| Métrica | Spring Boot (JVM) | Spring no Quarkus (JVM) | Quarkus (JVM) | Quarkus (nativo) |
+|---|---:|---:|---:|---:|
+| req/s | 941 | 1458 | 2800 | 983 |
+| Latência média (ms) | 34,04 | 22,00 | 11,37 | 32,79 |
+| p95 (ms) | 88,24 | 76,75 | 61,43 | 85,88 |
+| p99 (ms) | 101,39 | 83,91 | 70,70 | 96,73 |
+
+### Leitura dos resultados
+
+- **Startup:** o nativo respondeu a primeira requisição em cerca de 0,4 s, contra 2,1 s do Quarkus em JVM (aproximadamente 5 vezes mais rápido) e 5,6 s do Spring Boot.
+- **Memória:** logo após subir, o nativo usou cerca de 12 MiB, contra 204 MiB do Quarkus em JVM. Após a carga, a mediana foi 70,8 MiB (de 35 a 39 MiB em leitura, de 50 a 82 MiB em listagem e de 206 a 237 MiB em escrita), contra 378 MiB em JVM.
+- **Leitura e listagem:** o nativo teve throughput menor que o Quarkus em JVM (cerca de 20% em leitura e 35% em listagem) e latências p95 e p99 bem maiores. Em listagem ficou próximo do Spring Boot em JVM. Os testes não investigaram a causa; o nativo não tem o compilador JIT, que otimiza o código durante a execução.
+- **Escrita:** o nativo teve throughput próximo ao do Spring Boot e acima dos outros dois, com o menor p95. A escrita é limitada pelo H2 em memória e teve muita variação entre apps e rodadas na seção 14, então esse resultado não deve ser tratado como conclusivo.
+- **Trade-off:** o nativo troca throughput de pico por startup e consumo de memória muito menores. A escolha depende do cenário (por exemplo, serverless e scale-to-zero favorecem o nativo; serviços de longa duração com carga alta favorecem a JVM).
+
+### Notas sobre os dados
+
+- **req/s absoluto:** como na seção 14, o valor do k6 ficou entre 63% e 65% do máximo teórico para 50 VUs, de forma consistente. Os valores absolutos estão subestimados, mas a comparação relativa vale.
+- **Estabilidade:** a variação entre as 3 rodadas do nativo foi de até cerca de 6% em throughput, e não houve execução anômala.
+- **Sessões diferentes:** os números em JVM e o do nativo foram medidos em sessões distintas. Para uma comparação direta, repita o `run-all.sh` e o `run-native.sh` em sequência, na mesma máquina e nas mesmas condições.
+- Os resultados valem para o executável gerado com Mandrel, em Linux x86_64, no ambiente em que foram medidos.
