@@ -1,7 +1,9 @@
 package br.com.albertolpsiqueira.dtos;
 
 import br.com.albertolpsiqueira.models.UserModel;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 
+@RegisterForReflection
 public record UserResponseDTO(
         Long id,
         String name,
